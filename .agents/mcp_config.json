@@ -5,10 +5,10 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://postgres:[YOUR-PASSWORD]@db.lygcmwkrdtqrjlslhyh.supabase.co:5432/postgres"
+        "postgresql://postgres:[Ragul200528@]@db.lygcmwkrdtqrjlslhyh.supabase.co:5432/postgres"
       ],
       "env": {
-        "DATABASE_URL": "postgresql://postgres:[YOUR-PASSWORD]@db.lygcmwkrdtqrjlslhyh.supabase.co:5432/postgres"
+        "DATABASE_URL": "postgresql://postgres:[Ragul200528@]@db.lygcmwkrdtqrjlslhyh.supabase.co:5432/postgres"
       }
     }
   }
