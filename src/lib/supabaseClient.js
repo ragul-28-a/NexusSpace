@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import {
-  INITIAL_MOCK_USER,
+  ADMIN_USER,
   INITIAL_MOCK_PROFILES,
   INITIAL_MOCK_PROJECTS,
   INITIAL_MOCK_TASKS,
@@ -24,7 +24,7 @@ if (isLiveSupabaseConfigured) {
 }
 
 // -------------------------------------------------------------
-// LOCAL STORAGE BACKED MOCK SUPABASE ENGINE (FALLBACK DEMO MODE)
+// LOCAL STORAGE BACKED MOCK SUPABASE ENGINE (ADMIN & USER ROLES)
 // -------------------------------------------------------------
 class LocalStorageMockSupabase {
   constructor() {
@@ -33,9 +33,6 @@ class LocalStorageMockSupabase {
   }
 
   initStorage() {
-    if (!localStorage.getItem('nexus_user')) {
-      localStorage.setItem('nexus_user', JSON.stringify(INITIAL_MOCK_USER));
-    }
     if (!localStorage.getItem('nexus_profiles')) {
       localStorage.setItem('nexus_profiles', JSON.stringify(INITIAL_MOCK_PROFILES));
     }
@@ -47,6 +44,10 @@ class LocalStorageMockSupabase {
     }
     if (!localStorage.getItem('nexus_files')) {
       localStorage.setItem('nexus_files', JSON.stringify(INITIAL_MOCK_FILES));
+    }
+    // Default session: null (requires login or signup)
+    if (!localStorage.getItem('nexus_user') && !localStorage.getItem('nexus_has_initialized')) {
+      localStorage.setItem('nexus_has_initialized', 'true');
     }
   }
 
@@ -81,11 +82,12 @@ class LocalStorageMockSupabase {
       };
       this.user = newUser;
 
-      // Add profile
+      // Add user profile with role 'Member'
       const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
       const newProfile = {
         id: newUser.id,
         full_name: newUser.user_metadata.full_name || email.split('@')[0],
+        email: email,
         avatar_url: newUser.user_metadata.avatar_url || '',
         role: 'Member',
         bio: '',
@@ -97,31 +99,52 @@ class LocalStorageMockSupabase {
       this.notifyAuth('SIGNED_IN', { user: newUser });
       return { data: { user: newUser, session: { user: newUser } }, error: null };
     },
-    signInWithPassword: async ({ email }) => {
+    signInWithPassword: async ({ email, password }) => {
       await new Promise(r => setTimeout(r, 400));
-      const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
-      let existingUser = this.user;
 
-      if (!existingUser || existingUser.email !== email) {
-        existingUser = {
+      const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
+      
+      // Admin Authentication Check
+      if (email.toLowerCase() === 'admin@nexusspace.io') {
+        const adminUser = ADMIN_USER;
+        this.user = adminUser;
+        if (!profiles.find(p => p.id === adminUser.id)) {
+          profiles.push(INITIAL_MOCK_PROFILES[0]);
+          localStorage.setItem('nexus_profiles', JSON.stringify(profiles));
+        }
+        this.notifyAuth('SIGNED_IN', { user: adminUser });
+        return { data: { user: adminUser, session: { user: adminUser } }, error: null };
+      }
+
+      // Regular User Login
+      let existingProfile = profiles.find(p => p.email && p.email.toLowerCase() === email.toLowerCase());
+      let loggedUser;
+
+      if (existingProfile) {
+        loggedUser = {
+          id: existingProfile.id,
+          email: existingProfile.email,
+          user_metadata: { full_name: existingProfile.full_name }
+        };
+      } else {
+        loggedUser = {
           id: `usr-${Date.now()}`,
           email,
           user_metadata: { full_name: email.split('@')[0] }
         };
-        this.user = existingUser;
-        if (!profiles.find(p => p.id === existingUser.id)) {
-          profiles.push({
-            id: existingUser.id,
-            full_name: email.split('@')[0],
-            avatar_url: '',
-            role: 'Member'
-          });
-          localStorage.setItem('nexus_profiles', JSON.stringify(profiles));
-        }
+        profiles.push({
+          id: loggedUser.id,
+          full_name: email.split('@')[0],
+          email: email,
+          avatar_url: '',
+          role: 'Member'
+        });
+        localStorage.setItem('nexus_profiles', JSON.stringify(profiles));
       }
 
-      this.notifyAuth('SIGNED_IN', { user: existingUser });
-      return { data: { user: existingUser, session: { user: existingUser } }, error: null };
+      this.user = loggedUser;
+      this.notifyAuth('SIGNED_IN', { user: loggedUser });
+      return { data: { user: loggedUser, session: { user: loggedUser } }, error: null };
     },
     signOut: async () => {
       await new Promise(r => setTimeout(r, 300));
@@ -148,11 +171,12 @@ class LocalStorageMockSupabase {
     this.authListeners.forEach(l => l(event, session));
   }
 
-  // DATABASE QUERY BUILDER API
+  // DATABASE QUERY BUILDER API WITH ROLE PERMISSIONS
   from(table) {
     const self = this;
     let storageKey = `nexus_${table}`;
     let items = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const currentUser = this.user;
 
     let filters = [];
     let sortField = null;
@@ -174,9 +198,30 @@ class LocalStorageMockSupabase {
       async then(resolve) {
         await new Promise(r => setTimeout(r, 200));
         let result = [...items];
+
+        // ROLE-BASED ACCESS CONTROL (RLS Simulation)
+        if (table === 'projects') {
+          const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
+          const currentProfile = currentUser ? profiles.find(p => p.id === currentUser.id) : null;
+          const isAdmin = currentProfile?.role === 'Admin' || currentUser?.email === 'admin@nexusspace.io';
+
+          if (!isAdmin) {
+            // Regular user: ONLY show projects created by this user!
+            if (currentUser) {
+              result = result.filter(p => p.user_id === currentUser.id);
+            } else {
+              result = []; // Unauthenticated users see 0 projects
+            }
+          }
+          // Admin sees ALL projects across all users!
+        }
+
+        // Apply any manual .eq() filters
         filters.forEach(fn => {
           result = result.filter(fn);
         });
+
+        // Apply ordering
         if (sortField) {
           result.sort((a, b) => {
             if (a[sortField] < b[sortField]) return sortAscending ? -1 : 1;
@@ -184,6 +229,7 @@ class LocalStorageMockSupabase {
             return 0;
           });
         }
+
         resolve({ data: result, error: null });
       },
       insert(newRecords) {
@@ -265,7 +311,6 @@ class LocalStorageMockSupabase {
       return {
         upload: async (path, file) => {
           await new Promise(r => setTimeout(r, 400));
-          // Create local Object URL or Base64 representation
           const mockUrl = URL.createObjectURL(file);
           return { data: { path }, error: null, publicUrl: mockUrl };
         },

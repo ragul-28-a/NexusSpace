@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { X, LogIn, UserPlus, Lock, Mail, User, Loader2, Sparkles } from 'lucide-react';
+import { X, LogIn, UserPlus, Lock, Mail, User, Loader2, ShieldAlert } from 'lucide-react';
 
 export const AuthModal = ({ isOpen, onClose }) => {
   const { signIn, signUp } = useAuth();
@@ -43,7 +43,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
           setErrorMsg(error.message || 'Invalid email or password.');
           addToast('Login failed. Please check credentials.', 'error');
         } else {
-          addToast('Successfully logged in!', 'success');
+          addToast('Successfully signed in!', 'success');
           onClose();
         }
       } else {
@@ -52,7 +52,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
           setErrorMsg(error.message || 'Registration failed.');
           addToast('Registration failed.', 'error');
         } else {
-          addToast('Account registered successfully! Welcome to NexusSpace.', 'success');
+          addToast('Account created! Welcome to NexusSpace.', 'success');
           onClose();
         }
       }
@@ -108,7 +108,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
             }}
             onClick={() => { setMode('register'); setErrorMsg(''); }}
           >
-            <UserPlus className="w-4 h-4" /> Register
+            <UserPlus className="w-4 h-4" /> Create Account
           </button>
 
           <button
@@ -123,12 +123,12 @@ export const AuthModal = ({ isOpen, onClose }) => {
         <form onSubmit={handleSubmit} className="modal-body">
           <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
             <h3 style={{ fontSize: '1.3rem', fontWeight: 800 }}>
-              {mode === 'login' ? 'Welcome Back!' : 'Create an Account'}
+              {mode === 'login' ? 'Welcome Back!' : 'Create Your Account'}
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
               {mode === 'login' 
                 ? 'Sign in to access your projects and tasks' 
-                : 'Join NexusSpace with full Supabase Auth & RLS support'}
+                : 'Register as a new user to start managing your projects'}
             </p>
           </div>
 
@@ -146,6 +146,25 @@ export const AuthModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
+          {/* Admin Credentials Info Box */}
+          {mode === 'login' && (
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.1)',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              padding: '0.75rem',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.78rem',
+              marginBottom: '1rem',
+              color: 'var(--text-muted)'
+            }}>
+              <div style={{ fontWeight: 700, color: '#818cf8', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <ShieldAlert className="w-3.5 h-3.5 text-indigo-400" /> Admin Credentials:
+              </div>
+              <div>Email: <code style={{ color: '#22d3ee' }}>admin@nexusspace.io</code></div>
+              <div>Password: <code style={{ color: '#22d3ee' }}>AdminPassword123!</code></div>
+            </div>
+          )}
+
           {mode === 'register' && (
             <div className="input-group">
               <label className="input-label">Full Name</label>
@@ -155,7 +174,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
                   type="text"
                   className="input-field"
                   style={{ paddingLeft: '2.4rem' }}
-                  placeholder="Alex Rivera"
+                  placeholder="e.g. Sarah Jenkins"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
@@ -212,24 +231,10 @@ export const AuthModal = ({ isOpen, onClose }) => {
               </>
             ) : (
               <>
-                <UserPlus className="w-4 h-4" /> Create Account
+                <UserPlus className="w-4 h-4" /> Register
               </>
             )}
           </button>
-
-          <div style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            <span>Demo Quick Login: </span>
-            <button
-              type="button"
-              style={{ background: 'none', border: 'none', color: '#818cf8', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-              onClick={() => {
-                setEmail('alex.dev@nexusspace.io');
-                setPassword('password123');
-              }}
-            >
-              Fill Demo Credentials
-            </button>
-          </div>
         </form>
       </div>
     </div>

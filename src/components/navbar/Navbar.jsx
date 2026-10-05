@@ -9,12 +9,16 @@ import {
   LogIn, 
   Database, 
   Menu, 
-  X
+  X,
+  Users,
+  ShieldCheck
 } from 'lucide-react';
 
 export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) => {
   const { user, profile, signOut, isLiveSupabase } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const isAdmin = profile?.role === 'Admin' || user?.email === 'admin@nexusspace.io';
 
   return (
     <header className="glass-card" style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0, position: 'sticky', top: 0, zIndex: 100 }}>
@@ -38,7 +42,7 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em' }} className="gradient-text">NexusSpace</span>
-              <span className="badge badge-primary" style={{ fontSize: '0.65rem' }}>Full-Stack</span>
+              {isAdmin && <span className="badge badge-rose" style={{ fontSize: '0.65rem' }}>Admin</span>}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <Database className="w-3 h-3 text-cyan-400" />
@@ -64,6 +68,17 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
           >
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </button>
+
+          {/* Admin Exclusive View Button */}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.85rem' }}
+            >
+              <Users className="w-4 h-4 text-indigo-400" /> Users Directory
+            </button>
+          )}
         </nav>
 
         {/* Auth Actions / User Menu */}
@@ -87,7 +102,9 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
                   </div>
                 )}
                 <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{profile?.full_name || user.email.split('@')[0]}</span>
-                <span className="badge badge-cyan" style={{ fontSize: '0.6rem' }}>{profile?.role || 'Member'}</span>
+                <span className={`badge ${isAdmin ? 'badge-rose' : 'badge-cyan'}`} style={{ fontSize: '0.6rem' }}>
+                  {isAdmin ? 'Admin' : 'Member'}
+                </span>
               </button>
 
               <button 
@@ -101,7 +118,7 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
             </div>
           ) : (
             <button onClick={onOpenAuth} className="btn btn-primary" style={{ fontSize: '0.85rem' }}>
-              <LogIn className="w-4 h-4" /> Sign In
+              <LogIn className="w-4 h-4" /> Sign In / Register
             </button>
           )}
 
@@ -134,6 +151,15 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
           >
             <LayoutDashboard className="w-4 h-4" /> Dashboard
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => { setActiveTab('users'); setMobileMenuOpen(false); }}
+              className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ justifyContent: 'flex-start' }}
+            >
+              <Users className="w-4 h-4 text-indigo-400" /> Users Directory
+            </button>
+          )}
         </div>
       )}
 

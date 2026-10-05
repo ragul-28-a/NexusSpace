@@ -12,15 +12,18 @@ import { ProfileModal } from './components/profile/ProfileModal';
 
 import { DashboardPage } from './pages/DashboardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { UsersPage } from './pages/UsersPage';
 
 import { Database } from 'lucide-react';
 
 const MainApp = () => {
-  const { user, isLiveSupabase } = useAuth();
+  const { user, profile, isLiveSupabase } = useAuth();
   const { addToast } = useToast();
 
+  const isAdmin = profile?.role === 'Admin' || user?.email === 'admin@nexusspace.io';
+
   // Navigation & Tabs
-  const [activeTab, setActiveTab] = useState('projects'); // 'projects' | 'dashboard'
+  const [activeTab, setActiveTab] = useState('projects'); // 'projects' | 'dashboard' | 'users'
 
   // Data Collections State
   const [projects, setProjects] = useState([]);
@@ -232,6 +235,10 @@ const MainApp = () => {
             onEditProject={(proj) => { setProjectToEdit(proj); setIsProjectFormOpen(true); }}
             onDeleteProject={handleDeleteProject}
           />
+        )}
+
+        {activeTab === 'users' && isAdmin && (
+          <UsersPage projects={projects} />
         )}
       </main>
 
