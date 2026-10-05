@@ -17,14 +17,19 @@ export const isLiveSupabaseConfigured = Boolean(
   supabaseUrl.trim() !== ''
 );
 
-let realSupabase = null;
+let activeSupabaseClient = null;
 
 if (isLiveSupabaseConfigured) {
-  realSupabase = createClient(supabaseUrl, supabaseAnonKey);
+  try {
+    activeSupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    console.log('✅ NexusSpace connected to live Cloud Supabase:', supabaseUrl);
+  } catch (err) {
+    console.error('⚠️ Failed to initialize live Supabase client:', err);
+  }
 }
 
 // -------------------------------------------------------------
-// LOCAL STORAGE BACKED MOCK SUPABASE ENGINE (ADMIN & USER ROLES)
+// LOCAL STORAGE BACKED MOCK SUPABASE ENGINE (FALLBACK DEMO MODE)
 // -------------------------------------------------------------
 class LocalStorageMockSupabase {
   constructor() {
@@ -45,7 +50,6 @@ class LocalStorageMockSupabase {
     if (!localStorage.getItem('nexus_files')) {
       localStorage.setItem('nexus_files', JSON.stringify(INITIAL_MOCK_FILES));
     }
-    // Storage of registered credentials for demo fallback
     if (!localStorage.getItem('nexus_credentials')) {
       localStorage.setItem('nexus_credentials', JSON.stringify({}));
     }
@@ -64,7 +68,7 @@ class LocalStorageMockSupabase {
     }
   }
 
-  // AUTH API WITH STRICT CREDENTIAL CHECKS & ERRORS
+  // AUTH API
   auth = {
     getSession: async () => {
       const u = this.user;
@@ -77,7 +81,6 @@ class LocalStorageMockSupabase {
       await new Promise(r => setTimeout(r, 400));
       const cleanEmail = email.trim().toLowerCase();
 
-      // Store credentials
       const creds = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
       creds[cleanEmail] = password;
       localStorage.setItem('nexus_credentials', JSON.stringify(creds));
@@ -89,7 +92,6 @@ class LocalStorageMockSupabase {
       };
       this.user = newUser;
 
-      // Add user profile with role 'Member'
       const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
       const newProfile = {
         id: newUser.id,
@@ -110,7 +112,6 @@ class LocalStorageMockSupabase {
       await new Promise(r => setTimeout(r, 400));
       const cleanEmail = email.trim().toLowerCase();
 
-      // Admin Login Check
       if (cleanEmail === 'admin@nexusspace.io') {
         if (password !== 'AdminPassword123!') {
           return { data: null, error: { message: 'Invalid Admin User ID or Password.' } };
@@ -126,7 +127,6 @@ class LocalStorageMockSupabase {
         return { data: { user: adminUser, session: { user: adminUser } }, error: null };
       }
 
-      // Regular User Login Credential Check
       const creds = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
       const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
       const existingProfile = profiles.find(p => p.email && p.email.toLowerCase() === cleanEmail);
@@ -143,7 +143,6 @@ class LocalStorageMockSupabase {
           user_metadata: { full_name: existingProfile.full_name }
         };
       } else {
-        // Create new session credentials for demo
         loggedUser = {
           id: `usr-${Date.now()}`,
           email: cleanEmail,
@@ -190,9 +189,8 @@ class LocalStorageMockSupabase {
     this.authListeners.forEach(l => l(event, session));
   }
 
-  // DATABASE QUERY BUILDER API WITH ROLE PERMISSIONS
+  // DATABASE QUERY BUILDER API
   from(table) {
-    const self = this;
     let storageKey = `nexus_${table}`;
     let items = JSON.parse(localStorage.getItem(storageKey) || '[]');
     const currentUser = this.user;
@@ -218,29 +216,24 @@ class LocalStorageMockSupabase {
         await new Promise(r => setTimeout(r, 200));
         let result = [...items];
 
-        // ROLE-BASED ACCESS CONTROL (RLS Simulation)
         if (table === 'projects') {
           const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
           const currentProfile = currentUser ? profiles.find(p => p.id === currentUser.id) : null;
           const isAdmin = currentProfile?.role === 'Admin' || currentUser?.email === 'admin@nexusspace.io';
 
           if (!isAdmin) {
-            // Regular user: ONLY show projects created by this user!
             if (currentUser) {
               result = result.filter(p => p.user_id === currentUser.id);
             } else {
-              result = []; // Unauthenticated users see 0 projects
+              result = [];
             }
           }
-          // Admin sees ALL projects across all users (minimum 10 projects)!
         }
 
-        // Apply any manual .eq() filters
         filters.forEach(fn => {
           result = result.filter(fn);
         });
 
-        // Apply ordering
         if (sortField) {
           result.sort((a, b) => {
             if (a[sortField] < b[sortField]) return sortAscending ? -1 : 1;
@@ -347,4 +340,4 @@ class LocalStorageMockSupabase {
 
 export const mockSupabase = new LocalStorageMockSupabase();
 
-export const supabase = isLiveSupabaseConfigured ? realSupabase : mockSupabase;
+export const supabase = isLiveSupabaseConfigured ? activeSupabaseClient : mockSupabase;
