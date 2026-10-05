@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { X, LogIn, UserPlus, Lock, Mail, User, Loader2, ShieldAlert } from 'lucide-react';
+import { X, LogIn, UserPlus, Lock, Mail, User, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 
 export const AuthModal = ({ isOpen, onClose }) => {
   const { signIn, signUp } = useAuth();
   const { addToast } = useToast();
 
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  // Role Type selection: 'user' | 'admin'
+  const [roleType, setRoleType] = useState('user');
+  
+  // Auth Mode for User: 'login' | 'register'
+  const [mode, setMode] = useState('login'); 
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -22,14 +27,14 @@ export const AuthModal = ({ isOpen, onClose }) => {
 
     // Form Validation
     if (!email || !email.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
+      setErrorMsg('Please enter a valid User ID or Email Address.');
       return;
     }
-    if (!password || password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (!password) {
+      setErrorMsg('Please enter your password.');
       return;
     }
-    if (mode === 'register' && !fullName.trim()) {
+    if (roleType === 'user' && mode === 'register' && !fullName.trim()) {
       setErrorMsg('Please enter your full name.');
       return;
     }
@@ -37,23 +42,36 @@ export const AuthModal = ({ isOpen, onClose }) => {
     setLoading(true);
 
     try {
-      if (mode === 'login') {
-        const { error } = await signIn(email, password);
+      if (roleType === 'admin') {
+        // Admin Sign In Attempt
+        const { error } = await signIn(email.trim(), password);
         if (error) {
-          setErrorMsg(error.message || 'Invalid email or password.');
-          addToast('Login failed. Please check credentials.', 'error');
+          setErrorMsg('Access Denied: Invalid Admin User ID or Password.');
+          addToast('Admin authentication failed.', 'error');
         } else {
-          addToast('Successfully signed in!', 'success');
+          addToast('Admin authenticated successfully! Accessing admin workspace.', 'success');
           onClose();
         }
       } else {
-        const { error } = await signUp(email, password, fullName);
-        if (error) {
-          setErrorMsg(error.message || 'Registration failed.');
-          addToast('Registration failed.', 'error');
+        // User Login or Register
+        if (mode === 'login') {
+          const { error } = await signIn(email.trim(), password);
+          if (error) {
+            setErrorMsg('Invalid User ID or Password. Please check your credentials or create a new account.');
+            addToast('Login failed. Invalid credentials.', 'error');
+          } else {
+            addToast('Successfully signed in!', 'success');
+            onClose();
+          }
         } else {
-          addToast('Account created! Welcome to NexusSpace.', 'success');
-          onClose();
+          const { error } = await signUp(email.trim(), password, fullName.trim());
+          if (error) {
+            setErrorMsg(error.message || 'Registration failed.');
+            addToast('Registration failed.', 'error');
+          } else {
+            addToast('Account created successfully! Welcome to NexusSpace.', 'success');
+            onClose();
+          }
         }
       }
     } catch (err) {
@@ -65,107 +83,130 @@ export const AuthModal = ({ isOpen, onClose }) => {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
         
-        {/* Header Tabs */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', position: 'relative' }}>
-          <button
-            style={{
-              flex: 1,
-              padding: '1rem',
-              background: 'none',
-              border: 'none',
-              color: mode === 'login' ? 'var(--text-main)' : 'var(--text-muted)',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              cursor: 'pointer',
-              borderBottom: mode === 'login' ? '2px solid var(--primary)' : '2px solid transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem'
-            }}
-            onClick={() => { setMode('login'); setErrorMsg(''); }}
-          >
-            <LogIn className="w-4 h-4" /> Sign In
-          </button>
-
-          <button
-            style={{
-              flex: 1,
-              padding: '1rem',
-              background: 'none',
-              border: 'none',
-              color: mode === 'register' ? 'var(--text-main)' : 'var(--text-muted)',
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              cursor: 'pointer',
-              borderBottom: mode === 'register' ? '2px solid var(--primary)' : '2px solid transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem'
-            }}
-            onClick={() => { setMode('register'); setErrorMsg(''); }}
-          >
-            <UserPlus className="w-4 h-4" /> Create Account
-          </button>
-
-          <button
-            onClick={onClose}
-            style={{ position: 'absolute', right: '12px', top: '12px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-          >
+        {/* Modal Close Button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem 0.5rem' }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>NexusSpace Portal</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body Form */}
-        <form onSubmit={handleSubmit} className="modal-body">
+        {/* STEP 1: Select Login Type (User vs Admin) */}
+        <div style={{ padding: '0 1.25rem 1rem' }}>
+          <label className="input-label" style={{ marginBottom: '0.5rem', display: 'block', textAlign: 'center' }}>
+            Select Login Portal Type:
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+            <button
+              type="button"
+              onClick={() => { setRoleType('user'); setErrorMsg(''); setMode('login'); }}
+              className={`btn ${roleType === 'user' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.6rem 0.85rem', fontSize: '0.85rem', justifyContent: 'center' }}
+            >
+              <User className="w-4 h-4" /> User Portal
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setRoleType('admin'); setErrorMsg(''); }}
+              className={`btn ${roleType === 'admin' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.6rem 0.85rem', fontSize: '0.85rem', justifyContent: 'center' }}
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Admin Portal
+            </button>
+          </div>
+        </div>
+
+        {/* User Mode Tabs (Sign In vs Create Account) */}
+        {roleType === 'user' && (
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', borderTop: '1px solid var(--border-color)' }}>
+            <button
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                background: 'none',
+                border: 'none',
+                color: mode === 'login' ? 'var(--primary)' : 'var(--text-muted)',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                borderBottom: mode === 'login' ? '2px solid var(--primary)' : '2px solid transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem'
+              }}
+              onClick={() => { setMode('login'); setErrorMsg(''); }}
+            >
+              <LogIn className="w-4 h-4" /> Sign In
+            </button>
+
+            <button
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                background: 'none',
+                border: 'none',
+                color: mode === 'register' ? 'var(--primary)' : 'var(--text-muted)',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                borderBottom: mode === 'register' ? '2px solid var(--primary)' : '2px solid transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.4rem'
+              }}
+              onClick={() => { setMode('register'); setErrorMsg(''); }}
+            >
+              <UserPlus className="w-4 h-4" /> Create New Account
+            </button>
+          </div>
+        )}
+
+        {/* Form Area */}
+        <form onSubmit={handleSubmit} className="modal-body" style={{ paddingTop: '1.25rem' }}>
+          
           <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 800 }}>
-              {mode === 'login' ? 'Welcome Back!' : 'Create Your Account'}
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              {mode === 'login' 
-                ? 'Sign in to access your projects and tasks' 
-                : 'Register as a new user to start managing your projects'}
+            <h4 style={{ fontSize: '1.15rem', fontWeight: 800 }}>
+              {roleType === 'admin' 
+                ? 'Administrator Login' 
+                : mode === 'login' 
+                  ? 'User Account Login' 
+                  : 'Create a New Account'}
+            </h4>
+            <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              {roleType === 'admin'
+                ? 'Enter your private Admin User ID and Password'
+                : mode === 'login'
+                  ? 'Enter your registered User ID and Password'
+                  : 'Sign up for a new account to start managing your projects'}
             </p>
           </div>
 
+          {/* Explicit Error Display */}
           {errorMsg && (
             <div style={{
               background: 'rgba(244, 63, 94, 0.15)',
               border: '1px solid rgba(244, 63, 94, 0.3)',
               color: '#fb7185',
-              padding: '0.75rem',
+              padding: '0.75rem 1rem',
               borderRadius: 'var(--radius-md)',
               fontSize: '0.85rem',
-              marginBottom: '1rem'
-            }}>
-              {errorMsg}
-            </div>
-          )}
-
-          {/* Admin Credentials Info Box */}
-          {mode === 'login' && (
-            <div style={{
-              background: 'rgba(99, 102, 241, 0.1)',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              padding: '0.75rem',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '0.78rem',
               marginBottom: '1rem',
-              color: 'var(--text-muted)'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
             }}>
-              <div style={{ fontWeight: 700, color: '#818cf8', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <ShieldAlert className="w-3.5 h-3.5 text-indigo-400" /> Admin Credentials:
-              </div>
-              <div>Email: <code style={{ color: '#22d3ee' }}>admin@nexusspace.io</code></div>
-              <div>Password: <code style={{ color: '#22d3ee' }}>AdminPassword123!</code></div>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          {mode === 'register' && (
+          {/* Full Name field for New User Registration */}
+          {roleType === 'user' && mode === 'register' && (
             <div className="input-group">
               <label className="input-label">Full Name</label>
               <div style={{ position: 'relative' }}>
@@ -174,7 +215,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
                   type="text"
                   className="input-field"
                   style={{ paddingLeft: '2.4rem' }}
-                  placeholder="e.g. Sarah Jenkins"
+                  placeholder="e.g. John Doe"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
@@ -183,15 +224,16 @@ export const AuthModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
+          {/* User ID / Email Input */}
           <div className="input-group">
-            <label className="input-label">Email Address</label>
+            <label className="input-label">{roleType === 'admin' ? 'Admin User ID / Email' : 'User ID / Email'}</label>
             <div style={{ position: 'relative' }}>
               <Mail className="w-4 h-4" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
               <input
                 type="email"
                 className="input-field"
                 style={{ paddingLeft: '2.4rem' }}
-                placeholder="user@example.com"
+                placeholder={roleType === 'admin' ? 'admin@nexusspace.io' : 'user@domain.com'}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -199,6 +241,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
             </div>
           </div>
 
+          {/* Password Input */}
           <div className="input-group">
             <label className="input-label">Password</label>
             <div style={{ position: 'relative' }}>
@@ -215,6 +258,7 @@ export const AuthModal = ({ isOpen, onClose }) => {
             </div>
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
             className="btn btn-primary"
@@ -223,19 +267,24 @@ export const AuthModal = ({ isOpen, onClose }) => {
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Processing...
+                <Loader2 className="w-4 h-4 animate-spin" /> Authenticating...
+              </>
+            ) : roleType === 'admin' ? (
+              <>
+                <ShieldCheck className="w-4 h-4" /> Login as Admin
               </>
             ) : mode === 'login' ? (
               <>
-                <LogIn className="w-4 h-4" /> Sign In
+                <LogIn className="w-4 h-4" /> Sign In as User
               </>
             ) : (
               <>
-                <UserPlus className="w-4 h-4" /> Register
+                <UserPlus className="w-4 h-4" /> Register New Account
               </>
             )}
           </button>
         </form>
+
       </div>
     </div>
   );

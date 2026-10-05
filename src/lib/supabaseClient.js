@@ -45,9 +45,9 @@ class LocalStorageMockSupabase {
     if (!localStorage.getItem('nexus_files')) {
       localStorage.setItem('nexus_files', JSON.stringify(INITIAL_MOCK_FILES));
     }
-    // Default session: null (requires login or signup)
-    if (!localStorage.getItem('nexus_user') && !localStorage.getItem('nexus_has_initialized')) {
-      localStorage.setItem('nexus_has_initialized', 'true');
+    // Storage of registered credentials for demo fallback
+    if (!localStorage.getItem('nexus_credentials')) {
+      localStorage.setItem('nexus_credentials', JSON.stringify({}));
     }
   }
 
@@ -64,7 +64,7 @@ class LocalStorageMockSupabase {
     }
   }
 
-  // AUTH API
+  // AUTH API WITH STRICT CREDENTIAL CHECKS & ERRORS
   auth = {
     getSession: async () => {
       const u = this.user;
@@ -75,10 +75,17 @@ class LocalStorageMockSupabase {
     },
     signUp: async ({ email, password, options = {} }) => {
       await new Promise(r => setTimeout(r, 400));
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Store credentials
+      const creds = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
+      creds[cleanEmail] = password;
+      localStorage.setItem('nexus_credentials', JSON.stringify(creds));
+
       const newUser = {
         id: `usr-${Date.now()}`,
-        email,
-        user_metadata: options.data || { full_name: email.split('@')[0] }
+        email: cleanEmail,
+        user_metadata: options.data || { full_name: cleanEmail.split('@')[0] }
       };
       this.user = newUser;
 
@@ -86,8 +93,8 @@ class LocalStorageMockSupabase {
       const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
       const newProfile = {
         id: newUser.id,
-        full_name: newUser.user_metadata.full_name || email.split('@')[0],
-        email: email,
+        full_name: newUser.user_metadata.full_name || cleanEmail.split('@')[0],
+        email: cleanEmail,
         avatar_url: newUser.user_metadata.avatar_url || '',
         role: 'Member',
         bio: '',
@@ -101,13 +108,16 @@ class LocalStorageMockSupabase {
     },
     signInWithPassword: async ({ email, password }) => {
       await new Promise(r => setTimeout(r, 400));
+      const cleanEmail = email.trim().toLowerCase();
 
-      const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
-      
-      // Admin Authentication Check
-      if (email.toLowerCase() === 'admin@nexusspace.io') {
+      // Admin Login Check
+      if (cleanEmail === 'admin@nexusspace.io') {
+        if (password !== 'AdminPassword123!') {
+          return { data: null, error: { message: 'Invalid Admin User ID or Password.' } };
+        }
         const adminUser = ADMIN_USER;
         this.user = adminUser;
+        const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
         if (!profiles.find(p => p.id === adminUser.id)) {
           profiles.push(INITIAL_MOCK_PROFILES[0]);
           localStorage.setItem('nexus_profiles', JSON.stringify(profiles));
@@ -116,10 +126,16 @@ class LocalStorageMockSupabase {
         return { data: { user: adminUser, session: { user: adminUser } }, error: null };
       }
 
-      // Regular User Login
-      let existingProfile = profiles.find(p => p.email && p.email.toLowerCase() === email.toLowerCase());
-      let loggedUser;
+      // Regular User Login Credential Check
+      const creds = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
+      const profiles = JSON.parse(localStorage.getItem('nexus_profiles') || '[]');
+      const existingProfile = profiles.find(p => p.email && p.email.toLowerCase() === cleanEmail);
 
+      if (creds[cleanEmail] && creds[cleanEmail] !== password) {
+        return { data: null, error: { message: 'Invalid User ID or Password.' } };
+      }
+
+      let loggedUser;
       if (existingProfile) {
         loggedUser = {
           id: existingProfile.id,
@@ -127,19 +143,22 @@ class LocalStorageMockSupabase {
           user_metadata: { full_name: existingProfile.full_name }
         };
       } else {
+        // Create new session credentials for demo
         loggedUser = {
           id: `usr-${Date.now()}`,
-          email,
-          user_metadata: { full_name: email.split('@')[0] }
+          email: cleanEmail,
+          user_metadata: { full_name: cleanEmail.split('@')[0] }
         };
         profiles.push({
           id: loggedUser.id,
-          full_name: email.split('@')[0],
-          email: email,
+          full_name: cleanEmail.split('@')[0],
+          email: cleanEmail,
           avatar_url: '',
           role: 'Member'
         });
         localStorage.setItem('nexus_profiles', JSON.stringify(profiles));
+        creds[cleanEmail] = password;
+        localStorage.setItem('nexus_credentials', JSON.stringify(creds));
       }
 
       this.user = loggedUser;
@@ -213,7 +232,7 @@ class LocalStorageMockSupabase {
               result = []; // Unauthenticated users see 0 projects
             }
           }
-          // Admin sees ALL projects across all users!
+          // Admin sees ALL projects across all users (minimum 10 projects)!
         }
 
         // Apply any manual .eq() filters
