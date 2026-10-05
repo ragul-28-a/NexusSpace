@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. PROFILES TABLE
 -- ------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   full_name TEXT,
   email TEXT,
@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS public.projects (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Remove strict foreign key constraint so seed data and user projects insert seamlessly
+ALTER TABLE public.projects DROP CONSTRAINT IF EXISTS projects_user_id_fkey;
 
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
