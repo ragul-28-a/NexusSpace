@@ -59,39 +59,47 @@ export const AuthModal = ({ isOpen, onClose }) => {
           onClose();
         }
       } else if (mode === 'login') {
-        const { error } = await signIn(trimmedEmail, trimmedPassword);
+        const { error, profileError } = await signIn(trimmedEmail, trimmedPassword);
         if (error) {
           console.error('Sign-in failed:', error);
-          setErrorMsg('Sign-in failed. Check your email and password, then try again.');
-          addToast('Login failed. Invalid credentials.', 'error');
+          const message = error.message || 'Sign-in failed. Please check your email and password.';
+          setErrorMsg(message);
+          addToast(message, 'error');
         } else {
-          addToast('Successfully signed in!', 'success');
+          addToast(
+            profileError
+              ? 'Signed in, but your profile could not be loaded. Some account details may be unavailable.'
+              : 'Successfully signed in!',
+            profileError ? 'error' : 'success'
+          );
           onClose();
         }
       } else {
-        const { error, requiresEmailConfirmation } = await signUp(trimmedEmail, trimmedPassword, trimmedName);
+        const { error, requiresEmailConfirmation, profileError } = await signUp(trimmedEmail, trimmedPassword, trimmedName);
         if (error) {
           const msg = error.message || 'Registration failed.';
           console.error('Registration failed:', error);
           if (msg.toLowerCase().includes('user already registered') || msg.toLowerCase().includes('already exists')) {
             setErrorMsg('This email is already registered. Please sign in instead.');
           } else {
-            setErrorMsg('We could not create your account. Check the details and try again.');
+            setErrorMsg(msg);
           }
           addToast('Registration failed.', 'error');
         } else {
           addToast(
-            requiresEmailConfirmation
-              ? 'Account created. Check your email to confirm it before signing in.'
-              : 'Account created successfully! Welcome to NexusSpace.',
-            'success'
+            profileError
+              ? 'Account created, but your profile could not be loaded. Some account details may be unavailable.'
+              : requiresEmailConfirmation
+                ? 'Account created. Check your email to confirm it before signing in.'
+                : 'Account created successfully! Welcome to NexusSpace.',
+            profileError ? 'error' : 'success'
           );
           onClose();
         }
       }
     } catch (err) {
       console.error('Authentication form failed:', err);
-      setErrorMsg('Authentication failed unexpectedly. Please try again.');
+      setErrorMsg(err.message || 'Authentication failed unexpectedly. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -69,7 +69,11 @@ export const AuthProvider = ({ children }) => {
 
         if (isCurrent && data.session?.user) {
           setUser(data.session.user);
-          await fetchProfile(data.session.user);
+          try {
+            await fetchProfile(data.session.user);
+          } catch (profileError) {
+            console.error('Failed to load the signed-in user profile:', profileError);
+          }
         }
       } catch (error) {
         console.error('Failed to restore the Supabase session:', error);
@@ -129,13 +133,20 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
+      let profileError = null;
       if (data.session?.user) {
         setUser(data.session.user);
-        await fetchProfile(data.session.user);
+        try {
+          await fetchProfile(data.session.user);
+        } catch (error) {
+          profileError = error;
+          console.error('Account created, but the user profile could not be loaded:', error);
+        }
       }
 
       return {
         data,
+        profileError,
         error: null,
         requiresEmailConfirmation: Boolean(data.user && !data.session)
       };
@@ -149,8 +160,13 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       setUser(data.user);
-      const signedInProfile = await fetchProfile(data.user);
-      return { data, profile: signedInProfile, error: null };
+      try {
+        const signedInProfile = await fetchProfile(data.user);
+        return { data, profile: signedInProfile, profileError: null, error: null };
+      } catch (profileError) {
+        console.error('Signed in, but the user profile could not be loaded:', profileError);
+        return { data, profile: null, profileError, error: null };
+      }
     } catch (error) {
       return { data: null, error };
     }
