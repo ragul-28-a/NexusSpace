@@ -351,7 +351,7 @@ export default function App() {
           <section className="glass-card" style={{ margin: '3rem auto', padding: '2rem', maxWidth: '620px', textAlign: 'center' }}>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem' }}>Supabase configuration required</h1>
             <p style={{ color: 'var(--text-muted)' }}>
-              Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your local environment and Vercel project settings. Demo authentication and fake data are disabled.
+              Add VITE_SUPABASE_URL and either VITE_SUPABASE_PUBLISHABLE_KEY or VITE_SUPABASE_ANON_KEY to your local environment and Vercel project settings, then redeploy. Demo authentication and fake data are disabled.
             </p>
           </section>
         </main>

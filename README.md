@@ -52,7 +52,7 @@ NexusSpace is a production-ready, full-stack collaborative workspace application
 2. Import the repository in [Vercel Dashboard](https://vercel.com/new).
 3. In **Project Settings → Environment Variables**, add:
    - `VITE_SUPABASE_URL` = your Supabase project URL
-   - `VITE_SUPABASE_ANON_KEY` = your Supabase anon/public key
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` = your Supabase publishable key (or `VITE_SUPABASE_ANON_KEY` for an older anon/public key)
 4. Redeploy the project.
 5. Vercel will automatically build and publish your full-stack app with the live Supabase backend.
 
