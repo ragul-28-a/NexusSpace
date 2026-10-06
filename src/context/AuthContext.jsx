@@ -3,52 +3,70 @@ import { supabase, isLiveSupabaseConfigured } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
+const resolveFallbackProfile = (currentUser) => {
+  const email = currentUser?.email || '';
+  const fullName = currentUser?.user_metadata?.full_name || (email ? email.split('@')[0] : 'Workspace Member');
+
+  return {
+    id: currentUser?.id || null,
+    full_name: fullName,
+    avatar_url: currentUser?.user_metadata?.avatar_url || '',
+    role: 'Member',
+    bio: '',
+    website: ''
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch or create profile for authenticated user
-  const fetchProfile = async (userId) => {
+  const fetchProfile = async (userId, currentUser = user) => {
+    if (!userId) return null;
+
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId);
+        .eq('id', userId)
+        .maybeSingle();
 
-      if (data && data.length > 0) {
-        setProfile(data[0]);
-      } else {
-        // Fallback default profile creation if trigger didn't run
-        const defaultProfile = {
-          id: userId,
-          full_name: user?.email ? user.email.split('@')[0] : 'Workspace Member',
-          avatar_url: '',
-          role: 'Member',
-          bio: '',
-          website: ''
-        };
-        setProfile(defaultProfile);
+      if (error && error.code !== 'PGRST116') {
+        throw error;
       }
+
+      if (data) {
+        setProfile(data);
+        return data;
+      }
+
+      const fallbackProfile = resolveFallbackProfile(currentUser || user);
+      setProfile(fallbackProfile);
+      return fallbackProfile;
     } catch (err) {
       console.error('Error fetching profile:', err);
+      const fallbackProfile = resolveFallbackProfile(currentUser || user);
+      setProfile(fallbackProfile);
+      return fallbackProfile;
     }
   };
 
   useEffect(() => {
-    // Initial session check
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user.id, session.user);
         } else {
           setUser(null);
           setProfile(null);
         }
       } catch (err) {
         console.error('Auth session error:', err);
+        setUser(null);
+        setProfile(null);
       } finally {
         setLoading(false);
       }
@@ -56,11 +74,10 @@ export const AuthProvider = ({ children }) => {
 
     checkSession();
 
-    // Listen to Auth State Changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        await fetchProfile(session.user.id);
+        await fetchProfile(session.user.id, session.user);
       } else {
         setUser(null);
         setProfile(null);
@@ -73,7 +90,6 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Auth Operations
   const signUp = async (email, password, fullName) => {
     setLoading(true);
     try {
@@ -89,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       if (data?.user) {
         setUser(data.user);
-        await fetchProfile(data.user.id);
+        await fetchProfile(data.user.id, data.user);
       }
       return { data, error: null };
     } catch (err) {
@@ -109,7 +125,7 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       if (data?.user) {
         setUser(data.user);
-        await fetchProfile(data.user.id);
+        await fetchProfile(data.user.id, data.user);
       }
       return { data, error: null };
     } catch (err) {
@@ -138,12 +154,14 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select();
 
       if (error) throw error;
 
-      setProfile((prev) => ({ ...prev, ...updates }));
-      return { data, error: null };
+      const nextProfile = data?.[0] || { ...profile, ...updates, id: user.id };
+      setProfile(nextProfile);
+      return { data: nextProfile, error: null };
     } catch (err) {
       return { data: null, error: err };
     }
@@ -153,12 +171,13 @@ export const AuthProvider = ({ children }) => {
     user,
     profile,
     loading,
+    isAuthenticated: Boolean(user) && !loading,
     isLiveSupabase: isLiveSupabaseConfigured,
     signUp,
     signIn,
     signOut,
     updateProfile,
-    refetchProfile: () => user && fetchProfile(user.id)
+    refetchProfile: async () => (user ? fetchProfile(user.id, user) : null)
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -25,16 +25,19 @@ export const AuthModal = ({ isOpen, onClose }) => {
     e.preventDefault();
     setErrorMsg('');
 
-    // Form Validation
-    if (!email || !email.includes('@')) {
-      setErrorMsg('Please enter a valid User ID or Email Address.');
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedName = fullName.trim();
+
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setErrorMsg('Please enter a valid email address.');
       return;
     }
-    if (!password) {
-      setErrorMsg('Please enter your password.');
+    if (!trimmedPassword || trimmedPassword.length < 6) {
+      setErrorMsg('Password must be at least 6 characters long.');
       return;
     }
-    if (roleType === 'user' && mode === 'register' && !fullName.trim()) {
+    if (roleType === 'user' && mode === 'register' && !trimmedName) {
       setErrorMsg('Please enter your full name.');
       return;
     }
@@ -43,39 +46,41 @@ export const AuthModal = ({ isOpen, onClose }) => {
 
     try {
       if (roleType === 'admin') {
-        // Admin Sign In Attempt
-        const { error } = await signIn(email.trim(), password);
+        const { error } = await signIn(trimmedEmail, trimmedPassword);
         if (error) {
-          setErrorMsg('Access Denied: Invalid Admin User ID or Password.');
+          const msg = (error.message || '').toLowerCase();
+          setErrorMsg(msg.includes('invalid') || msg.includes('credential') ? 'Access denied. Please verify your admin email and password.' : 'Admin authentication failed.');
           addToast('Admin authentication failed.', 'error');
         } else {
           addToast('Admin authenticated successfully! Accessing admin workspace.', 'success');
           onClose();
         }
-      } else {
-        // User Login or Register
-        if (mode === 'login') {
-          const { error } = await signIn(email.trim(), password);
-          if (error) {
-            setErrorMsg('Invalid User ID or Password. Please check your credentials or create a new account.');
-            addToast('Login failed. Invalid credentials.', 'error');
-          } else {
-            addToast('Successfully signed in!', 'success');
-            onClose();
-          }
+      } else if (mode === 'login') {
+        const { error } = await signIn(trimmedEmail, trimmedPassword);
+        if (error) {
+          setErrorMsg(error.message || 'Invalid credentials. Please check your email and password.');
+          addToast('Login failed. Invalid credentials.', 'error');
         } else {
-          const { error } = await signUp(email.trim(), password, fullName.trim());
-          if (error) {
-            setErrorMsg(error.message || 'Registration failed.');
-            addToast('Registration failed.', 'error');
+          addToast('Successfully signed in!', 'success');
+          onClose();
+        }
+      } else {
+        const { error } = await signUp(trimmedEmail, trimmedPassword, trimmedName);
+        if (error) {
+          const msg = error.message || 'Registration failed.';
+          if (msg.toLowerCase().includes('user already registered') || msg.toLowerCase().includes('already exists')) {
+            setErrorMsg('This email is already registered. Please sign in instead.');
           } else {
-            addToast('Account created successfully! Welcome to NexusSpace.', 'success');
-            onClose();
+            setErrorMsg(msg);
           }
+          addToast('Registration failed.', 'error');
+        } else {
+          addToast('Account created successfully! Welcome to NexusSpace.', 'success');
+          onClose();
         }
       }
     } catch (err) {
-      setErrorMsg(err.message || 'An unexpected error occurred.');
+      setErrorMsg(err?.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }

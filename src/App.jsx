@@ -22,6 +22,14 @@ const MainApp = () => {
 
   const isAdmin = profile?.role === 'Admin' || user?.email === 'admin@nexusspace.io';
 
+  const ensureUserSession = () => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return false;
+    }
+    return true;
+  };
+
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState('projects'); // 'projects' | 'dashboard' | 'users'
 
@@ -225,12 +233,9 @@ const MainApp = () => {
             loading={loadingData}
             onSelectProject={(proj) => setSelectedProject(proj)}
             onOpenCreate={() => {
-              if (!user) {
-                setIsAuthModalOpen(true);
-              } else {
-                setProjectToEdit(null);
-                setIsProjectFormOpen(true);
-              }
+              if (!ensureUserSession()) return;
+              setProjectToEdit(null);
+              setIsProjectFormOpen(true);
             }}
             onEditProject={(proj) => { setProjectToEdit(proj); setIsProjectFormOpen(true); }}
             onDeleteProject={handleDeleteProject}
@@ -239,6 +244,14 @@ const MainApp = () => {
 
         {activeTab === 'users' && isAdmin && (
           <UsersPage projects={projects} />
+        )}
+
+        {!user && activeTab !== 'projects' && (
+          <div className="glass-card" style={{ padding: '2rem', textAlign: 'center', maxWidth: '540px', margin: '2rem auto 0' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '0.5rem' }}>Please sign in to continue</h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Your workspace is protected and requires an active Supabase session.</p>
+            <button onClick={() => setIsAuthModalOpen(true)} className="btn btn-primary">Open login</button>
+          </div>
         )}
       </main>
 

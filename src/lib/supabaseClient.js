@@ -7,14 +7,14 @@ import {
   INITIAL_MOCK_FILES
 } from './mockData';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isLiveSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
   supabaseUrl !== 'https://your-project-id.supabase.co' &&
-  supabaseUrl.trim() !== ''
+  supabaseUrl.startsWith('https://')
 );
 
 let activeSupabaseClient = null;

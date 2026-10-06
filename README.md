@@ -17,18 +17,24 @@ NexusSpace is a production-ready, full-stack collaborative workspace application
 
 ## 🚀 Quick Start (Local Development)
 
-1. **Install dependencies**:
+1. **Create your local environment file**:
+   ```bash
+   copy .env.example .env
+   ```
+   Then add your live Supabase values.
+
+2. **Install dependencies**:
    ```bash
    npm install
    ```
 
-2. **Start development server**:
+3. **Start development server**:
    ```bash
    npm run dev
    ```
-   Open `http://localhost:3000/` in your browser.
+   Open `http://localhost:5173/` in your browser.
 
-3. **Production Build**:
+4. **Production Build**:
    ```bash
    npm run build
    ```
@@ -44,10 +50,11 @@ NexusSpace is a production-ready, full-stack collaborative workspace application
    git push -u origin main
    ```
 2. Import the repository in [Vercel Dashboard](https://vercel.com/new).
-3. In **Environment Variables**, add:
-   - `VITE_SUPABASE_URL` = `https://your-project-id.supabase.co`
-   - `VITE_SUPABASE_ANON_KEY` = `your-supabase-anon-key`
-4. Click **Deploy**. Vercel will automatically build and publish your full-stack web application!
+3. In **Project Settings → Environment Variables**, add:
+   - `VITE_SUPABASE_URL` = your Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY` = your Supabase anon/public key
+4. Redeploy the project.
+5. Vercel will automatically build and publish your full-stack app with the live Supabase backend.
 
 ---
 
