@@ -62,10 +62,11 @@ NexusSpace is a production-ready, full-stack collaborative workspace application
 
 To link your live Supabase cloud backend:
 1. Open your project in the [Supabase Dashboard](https://supabase.com/dashboard).
-2. Go to **SQL Editor** -> **New Query**.
-3. Review and run `supabase/schema.sql`. It configures the registration profile trigger, ownership foreign keys, RLS policies, private attachment storage, and profile realtime updates. It does **not** delete existing database records.
-4. Confirm the existing Admin's `profiles.role` is `Admin`. The app does not infer Admin access from an email address, and profile settings cannot change roles.
-5. Create a test account through the app and confirm its profile ID matches the new user's Auth ID.
+2. In **Authentication → URL Configuration**, set the Site URL to `https://nexusspace-ashen.vercel.app` and add `https://nexusspace-ashen.vercel.app/**` and `http://localhost:3000/**` to Redirect URLs. Sign-up confirmation links return to the origin where the user registered.
+3. Go to **SQL Editor** -> **New Query**.
+4. Review and run `supabase/schema.sql`. It configures the registration profile trigger, ownership foreign keys, RLS policies, private attachment storage, and profile realtime updates. It does **not** delete existing database records.
+5. Confirm the existing Admin's `profiles.role` is `Admin`. The app does not infer Admin access from an email address, and profile settings cannot change roles.
+6. Create a test account through the app and confirm its profile ID matches the new user's Auth ID.
 
 Project attachments use private storage and short-lived signed download links. Project cover images and avatars are intentionally public media. Do not run a seed script: the previous demo seed data has been removed.
 
