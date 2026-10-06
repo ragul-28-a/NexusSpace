@@ -63,4 +63,10 @@ NexusSpace is a production-ready, full-stack collaborative workspace application
 To link your live Supabase cloud backend:
 1. Open your project in the [Supabase Dashboard](https://supabase.com/dashboard).
 2. Go to **SQL Editor** -> **New Query**.
-3. Copy and run the script from `supabase/schema.sql`.
+3. Review and run `supabase/schema.sql`. It configures the registration profile trigger, ownership foreign keys, RLS policies, private attachment storage, and profile realtime updates. It does **not** delete existing database records.
+4. Confirm the existing Admin's `profiles.role` is `Admin`. The app does not infer Admin access from an email address, and profile settings cannot change roles.
+5. Create a test account through the app and confirm its profile ID matches the new user's Auth ID.
+
+Project attachments use private storage and short-lived signed download links. Project cover images and avatars are intentionally public media. Do not run a seed script: the previous demo seed data has been removed.
+
+Existing Supabase records and uploaded objects are not cleaned by the schema script. Review the real Admin Auth user and the exact deletion scope before running any cleanup; do not delete the Admin Auth user or its profile.

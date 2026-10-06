@@ -13,7 +13,7 @@ export const ProjectFormModal = ({ isOpen, onClose, onSave, projectToEdit }) => 
   const [category, setCategory] = useState('Web Dev');
   const [status, setStatus] = useState('In Progress');
   const [priority, setPriority] = useState('Medium');
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
   const [coverUrl, setCoverUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -34,7 +34,7 @@ export const ProjectFormModal = ({ isOpen, onClose, onSave, projectToEdit }) => 
       setCategory('Web Dev');
       setStatus('In Progress');
       setPriority('Medium');
-      setIsPublic(true);
+      setIsPublic(false);
       setCoverUrl('');
     }
     setErrorMsg('');
@@ -55,34 +55,37 @@ export const ProjectFormModal = ({ isOpen, onClose, onSave, projectToEdit }) => 
       setErrorMsg('File size must be under 5MB.');
       return;
     }
+    if (!user) {
+      setErrorMsg('Sign in before uploading a project cover.');
+      return;
+    }
 
     setUploadingImage(true);
     setErrorMsg('');
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `cover_${user?.id || 'demo'}_${Date.now()}.${fileExt}`;
-      const filePath = `project-covers/${fileName}`;
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { data, error } = await supabase.storage
-        .from('project-assets')
+        .from('project-covers')
         .upload(filePath, file, { cacheControl: '3600', upsert: true });
 
       if (error) throw error;
 
-      // Get Public URL from Supabase Storage
       const { data: urlData } = supabase.storage
-        .from('project-assets')
+        .from('project-covers')
         .getPublicUrl(filePath);
 
-      const publicUrl = urlData?.publicUrl || URL.createObjectURL(file);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) throw new Error('Supabase did not return a cover image URL.');
       setCoverUrl(publicUrl);
-      addToast('Cover image uploaded to Supabase Storage!', 'success');
+      addToast('Cover image uploaded.', 'success');
     } catch (err) {
       console.error('Storage upload error:', err);
-      // Fallback local Object URL preview
-      setCoverUrl(URL.createObjectURL(file));
-      addToast('Cover image attached!', 'info');
+      setErrorMsg('Cover upload failed. Check your connection and try again.');
+      addToast('Cover upload failed.', 'error');
     } finally {
       setUploadingImage(false);
     }
@@ -92,6 +95,10 @@ export const ProjectFormModal = ({ isOpen, onClose, onSave, projectToEdit }) => 
     e.preventDefault();
     if (!title.trim()) {
       setErrorMsg('Project title is required.');
+      return;
+    }
+    if (!user) {
+      setErrorMsg('Sign in before creating a project.');
       return;
     }
 
@@ -117,7 +124,8 @@ export const ProjectFormModal = ({ isOpen, onClose, onSave, projectToEdit }) => 
       );
       onClose();
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to save project.');
+      console.error('Failed to save project:', err);
+      setErrorMsg('Failed to save project. Please try again.');
       addToast('Error saving project.', 'error');
     } finally {
       setSaving(false);

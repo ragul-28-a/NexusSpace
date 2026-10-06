@@ -1,169 +1,194 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase, isLiveSupabaseConfigured } from '../lib/supabaseClient';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { isLiveSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
-const resolveFallbackProfile = (currentUser) => {
-  const email = currentUser?.email || '';
-  const fullName = currentUser?.user_metadata?.full_name || (email ? email.split('@')[0] : 'Workspace Member');
-
-  return {
-    id: currentUser?.id || null,
-    full_name: fullName,
-    avatar_url: currentUser?.user_metadata?.avatar_url || '',
-    role: 'Member',
-    bio: '',
-    website: ''
-  };
-};
+const profileFromAuthUser = (authUser) => ({
+  id: authUser.id,
+  full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Workspace Member',
+  email: authUser.email || '',
+  avatar_url: authUser.user_metadata?.avatar_url || ''
+});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId, currentUser = user) => {
-    if (!userId) return null;
-
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      if (data) {
-        setProfile(data);
-        return data;
-      }
-
-      const fallbackProfile = resolveFallbackProfile(currentUser || user);
-      setProfile(fallbackProfile);
-      return fallbackProfile;
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      const fallbackProfile = resolveFallbackProfile(currentUser || user);
-      setProfile(fallbackProfile);
-      return fallbackProfile;
+  const fetchProfile = async (authUser) => {
+    if (!authUser?.id) {
+      setProfile(null);
+      return null;
     }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      setProfile(data);
+      return data;
+    }
+
+    const { error: insertError } = await supabase
+      .from('profiles')
+      .upsert(profileFromAuthUser(authUser), {
+        onConflict: 'id',
+        ignoreDuplicates: true
+      });
+
+    if (insertError) throw insertError;
+
+    const { data: createdProfile, error: refetchError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .single();
+
+    if (refetchError) throw refetchError;
+    setProfile(createdProfile);
+    return createdProfile;
   };
 
   useEffect(() => {
-    const checkSession = async () => {
+    if (!isLiveSupabaseConfigured) {
+      setLoading(false);
+      return undefined;
+    }
+
+    let isCurrent = true;
+
+    const loadSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setUser(session.user);
-          await fetchProfile(session.user.id, session.user);
-        } else {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (isCurrent && data.session?.user) {
+          setUser(data.session.user);
+          await fetchProfile(data.session.user);
+        }
+      } catch (error) {
+        console.error('Failed to restore the Supabase session:', error);
+        if (isCurrent) {
           setUser(null);
           setProfile(null);
         }
-      } catch (err) {
-        console.error('Auth session error:', err);
-        setUser(null);
-        setProfile(null);
       } finally {
-        setLoading(false);
+        if (isCurrent) setLoading(false);
       }
     };
 
-    checkSession();
+    loadSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        await fetchProfile(session.user.id, session.user);
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session?.user) {
         setUser(null);
         setProfile(null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      setUser(session.user);
+      if (event !== 'INITIAL_SESSION') {
+        setLoading(true);
+        window.setTimeout(() => {
+          if (isCurrent) {
+            fetchProfile(session.user)
+              .catch((error) => {
+                console.error('Failed to load the authenticated user profile:', error);
+                setProfile(null);
+              })
+              .finally(() => {
+                if (isCurrent) setLoading(false);
+              });
+          }
+        }, 0);
+      }
     });
 
     return () => {
-      subscription?.unsubscribe();
+      isCurrent = false;
+      subscription.unsubscribe();
     };
   }, []);
 
   const signUp = async (email, password, fullName) => {
-    setLoading(true);
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName
-          }
-        }
+        options: { data: { full_name: fullName.trim() } }
       });
+
       if (error) throw error;
-      if (data?.user) {
-        setUser(data.user);
-        await fetchProfile(data.user.id, data.user);
+
+      if (data.session?.user) {
+        setUser(data.session.user);
+        await fetchProfile(data.session.user);
       }
-      return { data, error: null };
-    } catch (err) {
-      return { data: null, error: err };
-    } finally {
-      setLoading(false);
+
+      return {
+        data,
+        error: null,
+        requiresEmailConfirmation: Boolean(data.user && !data.session)
+      };
+    } catch (error) {
+      return { data: null, error, requiresEmailConfirmation: false };
     }
   };
 
   const signIn = async (email, password) => {
-    setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      if (data?.user) {
-        setUser(data.user);
-        await fetchProfile(data.user.id, data.user);
-      }
-      return { data, error: null };
-    } catch (err) {
-      return { data: null, error: err };
-    } finally {
-      setLoading(false);
+      setUser(data.user);
+      const signedInProfile = await fetchProfile(data.user);
+      return { data, profile: signedInProfile, error: null };
+    } catch (error) {
+      return { data: null, error };
     }
   };
 
   const signOut = async () => {
-    setLoading(true);
     try {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       setUser(null);
       setProfile(null);
-    } catch (err) {
-      console.error('Error logging out:', err);
-    } finally {
-      setLoading(false);
+      return { error: null };
+    } catch (error) {
+      console.error('Failed to sign out from Supabase:', error);
+      return { error };
     }
   };
 
   const updateProfile = async (updates) => {
-    if (!user) return { error: new Error('User not authenticated') };
+    if (!user) return { error: new Error('You must be signed in to update your profile.') };
+
+    const allowedUpdates = {
+      full_name: updates.full_name,
+      avatar_url: updates.avatar_url,
+      bio: updates.bio,
+      website: updates.website
+    };
+
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(allowedUpdates)
         .eq('id', user.id)
-        .select();
+        .select('*')
+        .single();
 
       if (error) throw error;
-
-      const nextProfile = data?.[0] || { ...profile, ...updates, id: user.id };
-      setProfile(nextProfile);
-      return { data: nextProfile, error: null };
-    } catch (err) {
-      return { data: null, error: err };
+      setProfile(data);
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
     }
   };
 
@@ -177,7 +202,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     updateProfile,
-    refetchProfile: async () => (user ? fetchProfile(user.id, user) : null)
+    refetchProfile: () => (user ? fetchProfile(user) : Promise.resolve(null))
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -185,8 +210,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

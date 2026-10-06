@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabaseClient';
-import { X, User, Camera, Save, Loader2, Globe, Shield, Mail } from 'lucide-react';
+import { X, User, Camera, Save, Loader2, Mail } from 'lucide-react';
 
 export const ProfileModal = ({ isOpen, onClose }) => {
-  const { user, profile, updateProfile, refetchProfile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
   const { addToast } = useToast();
 
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('Member');
   const [bio, setBio] = useState('');
   const [website, setWebsite] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -19,7 +18,6 @@ export const ProfileModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name || '');
-      setRole(profile.role || 'Member');
       setBio(profile.bio || '');
       setWebsite(profile.website || '');
       setAvatarUrl(profile.avatar_url || '');
@@ -41,7 +39,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
     try {
       const fileExt = file.name.split('.').pop();
-      const filePath = `avatars/${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
       const { data, error } = await supabase.storage
         .from('avatars')
@@ -53,12 +51,13 @@ export const ProfileModal = ({ isOpen, onClose }) => {
         .from('avatars')
         .getPublicUrl(filePath);
 
-      const publicUrl = urlData?.publicUrl || URL.createObjectURL(file);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) throw new Error('Supabase did not return an avatar URL.');
       setAvatarUrl(publicUrl);
       addToast('Avatar uploaded to Supabase Storage!', 'success');
     } catch (err) {
-      setAvatarUrl(URL.createObjectURL(file));
-      addToast('Avatar preview attached!', 'info');
+      console.error('Avatar upload failed:', err);
+      addToast('Avatar upload failed. Please try again.', 'error');
     } finally {
       setUploadingAvatar(false);
     }
@@ -70,7 +69,6 @@ export const ProfileModal = ({ isOpen, onClose }) => {
 
     const updates = {
       full_name: fullName.trim(),
-      role,
       bio: bio.trim(),
       website: website.trim(),
       avatar_url: avatarUrl
@@ -79,6 +77,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
     const { error } = await updateProfile(updates);
 
     if (error) {
+      console.error('Failed to update profile:', error);
       addToast('Failed to update profile.', 'error');
     } else {
       addToast('Profile updated successfully!', 'success');
@@ -129,7 +128,9 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                   <Mail className="w-3.5 h-3.5" /> {user.email}
                 </div>
                 <div style={{ marginTop: '0.4rem' }}>
-                  <span className="badge badge-primary">{role}</span>
+                  <span className={`badge ${profile?.role === 'Admin' ? 'badge-rose' : 'badge-primary'}`}>
+                    {profile?.role || 'Member'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -144,16 +145,6 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                 onChange={(e) => setFullName(e.target.value)}
                 required
               />
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">Workspace Role</label>
-              <select className="input-field" value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="Admin">Admin</option>
-                <option value="Lead">Team Lead</option>
-                <option value="Member">Member</option>
-                <option value="Contributor">Contributor</option>
-              </select>
             </div>
 
             <div className="input-group">

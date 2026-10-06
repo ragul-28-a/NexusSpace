@@ -17,7 +17,7 @@ export const Navbar = ({ activeTab, setActiveTab, onOpenAuth, onOpenProfile }) =
   const { user, profile, signOut, isLiveSupabase } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isAdmin = profile?.role === 'Admin' || user?.email === 'admin@nexusspace.io';
+  const isAdmin = profile?.role === 'Admin';
 
   return (
     <header className="glass-card" style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0, position: 'sticky', top: 0, zIndex: 100, width: '100%', overflowX: 'hidden' }}>

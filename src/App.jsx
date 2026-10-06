@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './lib/supabaseClient';
+import { isLiveSupabaseConfigured, supabase } from './lib/supabaseClient';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider, useToast } from './context/ToastContext';
+import { getProjectAssetPath } from './lib/storagePaths';
 
 // Components & Pages
 import { Navbar } from './components/navbar/Navbar';
@@ -17,10 +18,10 @@ import { UsersPage } from './pages/UsersPage';
 import { Database } from 'lucide-react';
 
 const MainApp = () => {
-  const { user, profile, isLiveSupabase } = useAuth();
+  const { user, profile, loading: authLoading, isLiveSupabase } = useAuth();
   const { addToast } = useToast();
 
-  const isAdmin = profile?.role === 'Admin' || user?.email === 'admin@nexusspace.io';
+  const isAdmin = profile?.role === 'Admin';
 
   const ensureUserSession = () => {
     if (!user) {
@@ -46,75 +47,83 @@ const MainApp = () => {
   const [selectedProject, setSelectedProject] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  // Fetch Projects, Tasks, and Files from Supabase / Mock Engine
-  const fetchAllData = async () => {
-    setLoadingData(true);
-    try {
-      // 1. Fetch Projects
-      const { data: projData, error: projErr } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
+  useEffect(() => {
+    let isCurrent = true;
+    setProjects([]);
+    setTasks([]);
+    setFiles([]);
+    setSelectedProject(null);
 
-      if (projErr) throw projErr;
-      setProjects(projData || []);
-
-      // 2. Fetch Tasks
-      const { data: taskData, error: taskErr } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (!taskErr) setTasks(taskData || []);
-
-      // 3. Fetch Files
-      const { data: fileData, error: fileErr } = await supabase
-        .from('project_files')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!fileErr) setFiles(fileData || []);
-
-    } catch (err) {
-      console.error('Error fetching Supabase data:', err);
-      addToast('Failed to load workspace data.', 'error');
-    } finally {
+    if (!user) {
+      setActiveTab('projects');
       setLoadingData(false);
+      return () => { isCurrent = false; };
     }
-  };
+
+    const fetchAllData = async () => {
+      setLoadingData(true);
+      try {
+        const [projectsResult, tasksResult, filesResult] = await Promise.all([
+          supabase.from('projects').select('*').order('created_at', { ascending: false }),
+          supabase.from('tasks').select('*').order('created_at', { ascending: true }),
+          supabase.from('project_files').select('*').order('created_at', { ascending: false })
+        ]);
+
+        const failedResult = [projectsResult, tasksResult, filesResult].find(({ error }) => error);
+        if (failedResult?.error) throw failedResult.error;
+
+        if (isCurrent) {
+          setProjects(projectsResult.data || []);
+          setTasks(tasksResult.data || []);
+          setFiles(filesResult.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to load Supabase workspace data:', error);
+        if (isCurrent) addToast('Workspace data could not be loaded. Please try again.', 'error');
+      } finally {
+        if (isCurrent) setLoadingData(false);
+      }
+    };
+
+    fetchAllData();
+    return () => { isCurrent = false; };
+  }, [user, addToast]);
 
   useEffect(() => {
-    fetchAllData();
-  }, [user]);
+    if (!authLoading && activeTab === 'users' && !isAdmin) {
+      setActiveTab('projects');
+    }
+  }, [activeTab, authLoading, isAdmin]);
 
   // ------------------------------------------------------------------
   // PROJECT CRUD OPERATIONS
   // ------------------------------------------------------------------
   const handleSaveProject = async (projectData, editId) => {
+    if (!user) throw new Error('Sign in before saving a project.');
+    const ownedProjectData = { ...projectData, user_id: user.id };
+
     if (editId) {
-      // Update
       const { data, error } = await supabase
         .from('projects')
-        .update(projectData)
+        .update(ownedProjectData)
         .eq('id', editId)
-        .select();
+        .select()
+        .single();
 
       if (error) throw error;
-      setProjects(prev => prev.map(p => p.id === editId ? { ...p, ...projectData } : p));
+      setProjects(prev => prev.map(p => p.id === editId ? data : p));
       if (selectedProject?.id === editId) {
-        setSelectedProject(prev => ({ ...prev, ...projectData }));
+        setSelectedProject(data);
       }
     } else {
-      // Insert
       const { data, error } = await supabase
         .from('projects')
-        .insert(projectData)
+        .insert(ownedProjectData)
         .select();
 
       if (error) throw error;
 
-      const newProj = Array.isArray(data) ? data[0] : (data || { ...projectData, id: `proj-${Date.now()}` });
-      setProjects(prev => [newProj, ...prev]);
+      setProjects(prev => [data[0], ...prev]);
     }
   };
 
@@ -136,7 +145,8 @@ const MainApp = () => {
       }
       addToast('Project deleted successfully.', 'success');
     } catch (err) {
-      addToast('Failed to delete project.', 'error');
+      console.error('Failed to delete project:', err);
+      addToast(err.message || 'Failed to delete project.', 'error');
     }
   };
 
@@ -144,14 +154,14 @@ const MainApp = () => {
   // RELATIONAL TASK CRUD OPERATIONS
   // ------------------------------------------------------------------
   const handleAddTask = async (taskData) => {
+    if (!user) throw new Error('Sign in before adding a task.');
     const { data, error } = await supabase
       .from('tasks')
-      .insert(taskData)
+      .insert({ ...taskData, user_id: user.id })
       .select();
 
     if (error) throw error;
-    const newTask = Array.isArray(data) ? data[0] : (data || { ...taskData, id: `task-${Date.now()}` });
-    setTasks(prev => [...prev, newTask]);
+    setTasks(prev => [...prev, data[0]]);
   };
 
   const handleToggleTask = async (taskId, isCompleted) => {
@@ -160,9 +170,12 @@ const MainApp = () => {
       .update({ is_completed: isCompleted })
       .eq('id', taskId);
 
-    if (!error) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_completed: isCompleted } : t));
+    if (error) {
+      console.error('Failed to update task:', error);
+      addToast('Failed to update task. Please try again.', 'error');
+      return;
     }
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_completed: isCompleted } : t));
   };
 
   const handleDeleteTask = async (taskId) => {
@@ -171,41 +184,61 @@ const MainApp = () => {
       .delete()
       .eq('id', taskId);
 
-    if (!error) {
-      setTasks(prev => prev.filter(t => t.id !== taskId));
-      addToast('Task removed.', 'info');
+    if (error) {
+      console.error('Failed to delete task:', error);
+      addToast('Failed to delete task. Please try again.', 'error');
+      return;
     }
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    addToast('Task removed.', 'info');
   };
 
   // ------------------------------------------------------------------
   // SUPABASE STORAGE FILES OPERATIONS
   // ------------------------------------------------------------------
   const handleFileUpload = async (fileRecord) => {
+    if (!user) throw new Error('Sign in before attaching a file.');
     const { data, error } = await supabase
       .from('project_files')
-      .insert(fileRecord)
+      .insert({ ...fileRecord, user_id: user.id })
       .select();
 
-    if (!error) {
-      const newFile = Array.isArray(data) ? data[0] : (data || { ...fileRecord, id: `file-${Date.now()}` });
-      setFiles(prev => [newFile, ...prev]);
-    }
+    if (error) throw error;
+    setFiles(prev => [data[0], ...prev]);
   };
 
-  const handleFileDelete = async (fileId) => {
-    const { error } = await supabase
-      .from('project_files')
-      .delete()
-      .eq('id', fileId);
+  const handleFileDelete = async (file) => {
+    try {
+      const path = getProjectAssetPath(file.file_url);
+      if (path) {
+        const { error: storageError } = await supabase.storage
+          .from('project-assets')
+          .remove([path]);
+        if (storageError) throw storageError;
+      }
 
-    if (!error) {
-      setFiles(prev => prev.filter(f => f.id !== fileId));
+      const { error } = await supabase
+        .from('project_files')
+        .delete()
+        .eq('id', file.id);
+
+      if (error) throw error;
+      setFiles(prev => prev.filter(item => item.id !== file.id));
       addToast('File attachment deleted.', 'info');
+    } catch (error) {
+      console.error('Failed to delete project file:', error);
+      addToast('Failed to delete file attachment. Please try again.', 'error');
     }
   };
 
   return (
     <div className="app-container">
+      {authLoading && (
+        <div className="glass-card" style={{ margin: '2rem auto', padding: '1.5rem', maxWidth: '520px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Restoring your secure Supabase session…
+        </div>
+      )}
+
       {/* Top Navigation */}
       <Navbar
         activeTab={activeTab}
@@ -215,13 +248,17 @@ const MainApp = () => {
       />
 
       {/* Main View Area */}
-      <main className="main-content">
+      <main className="main-content" style={{ display: authLoading ? 'none' : undefined }}>
         {activeTab === 'dashboard' && (
           <DashboardPage
             projects={projects}
             tasks={tasks}
             files={files}
-            onOpenCreate={() => { setProjectToEdit(null); setIsProjectFormOpen(true); }}
+            onOpenCreate={() => {
+              if (!ensureUserSession()) return;
+              setProjectToEdit(null);
+              setIsProjectFormOpen(true);
+            }}
             setActiveTab={setActiveTab}
           />
         )}
@@ -307,6 +344,21 @@ const MainApp = () => {
 };
 
 export default function App() {
+  if (!isLiveSupabaseConfigured) {
+    return (
+      <div className="app-container">
+        <main className="main-content">
+          <section className="glass-card" style={{ margin: '3rem auto', padding: '2rem', maxWidth: '620px', textAlign: 'center' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.75rem' }}>Supabase configuration required</h1>
+            <p style={{ color: 'var(--text-muted)' }}>
+              Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your local environment and Vercel project settings. Demo authentication and fake data are disabled.
+            </p>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <ToastProvider>
       <AuthProvider>

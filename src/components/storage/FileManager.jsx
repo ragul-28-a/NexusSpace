@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { getProjectAssetPath } from '../../lib/storagePaths';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { 
@@ -8,7 +9,6 @@ import {
   FileText, 
   Image as ImageIcon, 
   File, 
-  Download, 
   Trash2, 
   Loader2,
   ExternalLink
@@ -18,8 +18,35 @@ export const FileManager = ({ projectId, files = [], onFileUploaded, onFileDelet
   const { user } = useAuth();
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
+  const [fileUrls, setFileUrls] = useState({});
 
   const projectFiles = files.filter(f => f.project_id === projectId);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadFileUrls = async () => {
+      const entries = await Promise.all(projectFiles.map(async (file) => {
+        const path = getProjectAssetPath(file.file_url);
+        if (!path) return [file.id, file.file_url];
+
+        const { data, error } = await supabase.storage
+          .from('project-assets')
+          .createSignedUrl(path, 3600);
+
+        if (error) {
+          console.error(`Could not create a secure download URL for ${file.file_name}:`, error);
+          return [file.id, null];
+        }
+        return [file.id, data.signedUrl];
+      }));
+
+      if (isCurrent) setFileUrls(Object.fromEntries(entries));
+    };
+
+    loadFileUrls();
+    return () => { isCurrent = false; };
+  }, [projectId, files]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -36,49 +63,43 @@ export const FileManager = ({ projectId, files = [], onFileUploaded, onFileDelet
 
     setUploading(true);
 
+    let uploadedPath = null;
     try {
-      const fileExt = file.name.split('.').pop();
-      const storagePath = `attachments/${projectId}/${Date.now()}_${file.name}`;
+      const safeFileName = file.name.replace(/[\\/]/g, '_');
+      const storagePath = `attachments/${projectId}/${user.id}/${Date.now()}_${safeFileName}`;
+      uploadedPath = storagePath;
 
       // Upload file to Supabase Storage Bucket ('project-assets')
-      const { data: storageData, error: storageError } = await supabase.storage
+      const { error: storageError } = await supabase.storage
         .from('project-assets')
         .upload(storagePath, file, { upsert: true });
 
       if (storageError) throw storageError;
 
-      // Obtain Public URL
-      const { data: urlData } = supabase.storage
-        .from('project-assets')
-        .getPublicUrl(storagePath);
-
-      const fileUrl = urlData?.publicUrl || URL.createObjectURL(file);
-
-      // Save file record metadata to Supabase DB 'project_files'
       const fileRecord = {
         project_id: projectId,
         user_id: user.id,
         file_name: file.name,
-        file_url: fileUrl,
+        file_url: storagePath,
         file_size: file.size,
         file_type: file.type || 'application/octet-stream'
       };
 
       await onFileUploaded(fileRecord);
-      addToast(`File "${file.name}" uploaded to Supabase Storage!`, 'success');
+      addToast(`File "${file.name}" uploaded securely.`, 'success');
     } catch (err) {
       console.error('File upload error:', err);
-      // Local fallback attach
-      const fallbackRecord = {
-        project_id: projectId,
-        user_id: user.id,
-        file_name: file.name,
-        file_url: URL.createObjectURL(file),
-        file_size: file.size,
-        file_type: file.type || 'application/octet-stream'
-      };
-      await onFileUploaded(fallbackRecord);
-      addToast(`File "${file.name}" attached locally!`, 'info');
+      if (uploadedPath) {
+        try {
+          const { error: cleanupError } = await supabase.storage
+            .from('project-assets')
+            .remove([uploadedPath]);
+          if (cleanupError) console.error('Could not clean up failed file upload:', cleanupError);
+        } catch (cleanupError) {
+          console.error('Could not clean up failed file upload:', cleanupError);
+        }
+      }
+      addToast('File upload failed. Check your connection and try again.', 'error');
     } finally {
       setUploading(false);
     }
@@ -141,18 +162,20 @@ export const FileManager = ({ projectId, files = [], onFileUploaded, onFileDelet
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <a
-                  href={file.file_url}
+                  href={fileUrls[file.id] || undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-secondary btn-icon btn-sm"
                   title="View / Download"
+                  aria-disabled={!fileUrls[file.id]}
+                  onClick={(event) => { if (!fileUrls[file.id]) event.preventDefault(); }}
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
                 </a>
 
                 {isOwner && (
                   <button
-                    onClick={() => onFileDeleted(file.id)}
+                    onClick={() => onFileDeleted(file)}
                     className="btn btn-danger btn-icon btn-sm"
                     title="Delete File Attachment"
                   >
